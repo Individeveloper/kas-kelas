@@ -1,0 +1,32 @@
+/* Global Font Styling - Lighter Weight */
+body {
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Make bold text slightly lighter */
+.font-bold {
+    font-weight: 600 !important;
+    /* semibold instead of bold (700) */
+}
+
+/* Make headings lighter */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: 600;
+}
+
+/* Table headers lighter */
+thead th {
+    font-weight: 500;
+}
+
+/* Sidebar brand lighter */
+.brand {
+    font-weight: 600;
+}
