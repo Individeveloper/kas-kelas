@@ -29,25 +29,23 @@ class Murid {
     /**
      * Tambah murid baru
      */
-    public static function create($nama, $kelas, $status = 'Aktif') {
+    public static function create($nama, $status = 'Aktif') {
         $nama = Database::escape($nama);
-        $kelas = Database::escape($kelas);
         $status = Database::escape($status);
         
-        $result = Database::query("INSERT INTO murid (nama, kelas, `status`) VALUES ('$nama', '$kelas', '$status')");
+        $result = Database::query("INSERT INTO murid (nama, `status`) VALUES ('$nama', '$status')");
         return $result ? Database::lastId() : false;
     }
 
     /**
      * Update murid
      */
-    public static function update($id, $nama, $kelas, $status) {
+    public static function update($id, $nama, $status) {
         $id = (int)$id;
         $nama = Database::escape($nama);
-        $kelas = Database::escape($kelas);
         $status = Database::escape($status);
         
-        $result = Database::query("UPDATE murid SET nama = '$nama', kelas = '$kelas', `status` = '$status' WHERE id_murid = $id");
+        $result = Database::query("UPDATE murid SET nama = '$nama', `status` = '$status' WHERE id_murid = $id");
         return $result;
     }
 

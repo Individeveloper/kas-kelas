@@ -104,4 +104,49 @@ function getBulanNama($bulan) {
     ];
     return $nama[$bulan] ?? '';
 }
+
+function getNominalKasAktif() {
+    $result = query("SELECT nilai FROM pengaturan WHERE nama_pengaturan = 'nominal_kas' LIMIT 1");
+
+    if ($result && ($row = mysqli_fetch_assoc($result))) {
+        return max(1000, (int)$row['nilai']);
+    }
+
+    return 20000;
+}
+
+function generateTagihanOtomatis($bulan = null, $tahun = null) {
+    global $db;
+
+    // Hanya bendahara yang boleh memicu proses generate agar hak akses tetap terjaga.
+    if (!isBendahara()) {
+        return 0;
+    }
+
+    $bulan = $bulan ? (int)$bulan : (int)date('n');
+    $tahun = $tahun ? (int)$tahun : (int)date('Y');
+
+    if ($bulan < 1 || $bulan > 12) {
+        $bulan = (int)date('n');
+    }
+
+    if ($tahun < 2000 || $tahun > 2100) {
+        $tahun = (int)date('Y');
+    }
+
+    $nominalKas = getNominalKasAktif();
+
+    $insertQuery = "INSERT IGNORE INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar)
+                    SELECT m.id_murid, $bulan, $tahun, $nominalKas, 0, 'Belum'
+                    FROM murid m
+                    LEFT JOIN tagihan t ON t.id_murid = m.id_murid AND t.bulan = $bulan AND t.tahun = $tahun
+                    WHERE m.`status` = 'Aktif' AND t.id_tagihan IS NULL";
+
+    $result = query($insertQuery);
+    if (!$result) {
+        return 0;
+    }
+
+    return mysqli_affected_rows($db);
+}
 ?>

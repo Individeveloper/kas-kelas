@@ -8,6 +8,10 @@ $user = getUser();
 $bulanIni = date('n');
 $tahunIni = date('Y');
 
+if (isBendahara()) {
+    generateTagihanOtomatis($bulanIni, $tahunIni);
+}
+
 // Total murid aktif
 $totalMurid = mysqli_fetch_assoc(query("SELECT COUNT(*) as total FROM murid WHERE `status` = 'Aktif'"))['total'];
 $muridTidakAktif = mysqli_fetch_assoc(query("SELECT COUNT(*) as total FROM murid WHERE `status` = 'Tidak Aktif'"))['total'];
@@ -129,10 +133,14 @@ $recentTransactions = query("SELECT t.*, m.nama FROM transaksi t LEFT JOIN murid
                     <?php else: ?>
                     <div class="text-center py-4">
                         <i class="fas fa-exclamation-circle text-yellow-500 text-2xl mb-2"></i>
-                        <p class="text-gray-500">Belum ada tagihan bulan ini</p>
+                        <?php if ($totalMurid > 0): ?>
+                        <p class="text-gray-500">Tagihan dibuat otomatis saat menu tagihan dibuka</p>
+                        <?php else: ?>
+                        <p class="text-gray-500">Belum ada murid aktif</p>
+                        <?php endif; ?>
                         <?php if (isBendahara()): ?>
                         <a href="/cashflowKas/tagihan/index.php" class="text-blue-600 hover:underline text-sm mt-2 inline-block">
-                            Generate Tagihan
+                            Buka Tagihan
                         </a>
                         <?php endif; ?>
                     </div>

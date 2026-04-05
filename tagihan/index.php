@@ -12,11 +12,15 @@ $bulan = isset($_GET['bulan']) ? (int)$_GET['bulan'] : date('n');
 $tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
 
 // Get nominal kas dari pengaturan
-$pengaturan = mysqli_fetch_assoc(query("SELECT * FROM pengaturan WHERE nama_pengaturan = 'nominal_kas'"));
-$nominalKas = $pengaturan ? (int)$pengaturan['nilai'] : 20000;
+$nominalKas = getNominalKasAktif();
+$tagihanTerbuatOtomatis = generateTagihanOtomatis($bulan, $tahun);
 
 $success = '';
 $error = '';
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $tagihanTerbuatOtomatis > 0) {
+    $success = $tagihanTerbuatOtomatis . " tagihan otomatis berhasil dibuat untuk " . getBulanNama($bulan) . " " . $tahun;
+}
 
 // ============================================
 // HANDLE POST REQUESTS
@@ -44,26 +48,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Tagihan tidak ditemukan";
             }
         } elseif (isset($_POST['id_murid'])) {
-            // Tagihan dari template (belum ada di database)
+            // Cek dulu tagihan periode ini, baru insert jika memang belum ada.
             $id_murid = (int)$_POST['id_murid'];
-            $murid = mysqli_fetch_assoc(query("SELECT * FROM murid WHERE id_murid = $id_murid"));
-            
-            if ($murid) {
-                $nama = $murid['nama'];
-                $nominal = $nominalKas;
-                $jumlah_bayar_lama = 0;
-                $sisa = $nominal;
-                
-                // Insert tagihan baru
-                $result = query("INSERT INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar) VALUES ($id_murid, $bulan, $tahun, $nominal, 0, 'Belum')");
-                if ($result) {
-                    $id_tagihan = mysqli_insert_id($GLOBALS['db']);
-                    $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_tagihan = $id_tagihan"));
-                } else {
-                    $error = "Gagal membuat tagihan: " . mysqli_error($GLOBALS['db']);
-                }
+            $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_murid = $id_murid AND t.bulan = $bulan AND t.tahun = $tahun LIMIT 1"));
+
+            if ($tagihan) {
+                $id_tagihan = $tagihan['id_tagihan'];
+                $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
+                $nama = $tagihan['nama'];
+                $nominal = $tagihan['nominal'];
+                $jumlah_bayar_lama = $tagihan['jumlah_bayar'];
             } else {
-                $error = "Murid tidak ditemukan";
+                $murid = mysqli_fetch_assoc(query("SELECT * FROM murid WHERE id_murid = $id_murid"));
+
+                if ($murid) {
+                    $nama = $murid['nama'];
+                    $nominal = $nominalKas;
+                    $jumlah_bayar_lama = 0;
+                    $sisa = $nominal;
+
+                    $result = query("INSERT INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar) VALUES ($id_murid, $bulan, $tahun, $nominal, 0, 'Belum')");
+                    if ($result) {
+                        $id_tagihan = mysqli_insert_id($GLOBALS['db']);
+                        $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_tagihan = $id_tagihan"));
+                    } else {
+                        // Antisipasi race condition jika record terbuat di request lain.
+                        $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_murid = $id_murid AND t.bulan = $bulan AND t.tahun = $tahun LIMIT 1"));
+                        if ($tagihan) {
+                            $id_tagihan = $tagihan['id_tagihan'];
+                            $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
+                            $nama = $tagihan['nama'];
+                            $nominal = $tagihan['nominal'];
+                            $jumlah_bayar_lama = $tagihan['jumlah_bayar'];
+                        } else {
+                            $error = "Gagal membuat tagihan: " . mysqli_error($GLOBALS['db']);
+                        }
+                    }
+                } else {
+                    $error = "Murid tidak ditemukan";
+                }
             }
         }
         
@@ -120,19 +143,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nama = $tagihan['nama'];
             }
         } elseif (isset($_POST['id_murid'])) {
-            // Dari template, buat tagihan baru lalu lunaskan
+            // Cek dulu tagihan periode ini, baru insert jika memang belum ada.
             $id_murid = (int)$_POST['id_murid'];
-            $murid = mysqli_fetch_assoc(query("SELECT * FROM murid WHERE id_murid = $id_murid"));
-            
-            if ($murid) {
-                $nama = $murid['nama'];
-                $sisa = $nominalKas;
-                
-                // Insert tagihan baru
-                $result = query("INSERT INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar) VALUES ($id_murid, $bulan, $tahun, $nominalKas, 0, 'Belum')");
-                if ($result) {
-                    $id_tagihan = mysqli_insert_id($GLOBALS['db']);
-                    $tagihan = ['nominal' => $nominalKas];
+            $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_murid = $id_murid AND t.bulan = $bulan AND t.tahun = $tahun LIMIT 1"));
+
+            if ($tagihan) {
+                if ($tagihan['status_bayar'] != 'Lunas') {
+                    $id_tagihan = $tagihan['id_tagihan'];
+                    $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
+                    $nama = $tagihan['nama'];
+                }
+            } else {
+                $murid = mysqli_fetch_assoc(query("SELECT * FROM murid WHERE id_murid = $id_murid"));
+
+                if ($murid) {
+                    $nama = $murid['nama'];
+                    $sisa = $nominalKas;
+
+                    $result = query("INSERT INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar) VALUES ($id_murid, $bulan, $tahun, $nominalKas, 0, 'Belum')");
+                    if ($result) {
+                        $id_tagihan = mysqli_insert_id($GLOBALS['db']);
+                        $tagihan = ['nominal' => $nominalKas];
+                    } else {
+                        // Antisipasi race condition jika record terbuat di request lain.
+                        $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_murid = $id_murid AND t.bulan = $bulan AND t.tahun = $tahun LIMIT 1"));
+                        if ($tagihan && $tagihan['status_bayar'] != 'Lunas') {
+                            $id_tagihan = $tagihan['id_tagihan'];
+                            $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
+                            $nama = $tagihan['nama'];
+                        } else {
+                            $error = "Gagal membuat tagihan: " . mysqli_error($GLOBALS['db']);
+                        }
+                    }
+                } else {
+                    $error = "Murid tidak ditemukan";
                 }
             }
         }
@@ -180,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // GET DATA - Template dari murid + tagihan existing
 // ============================================
 // Query: Ambil semua murid aktif, LEFT JOIN dengan tagihan bulan ini
-$tagihanList = query("SELECT m.id_murid, m.nama, m.kelas, 
+$tagihanList = query("SELECT m.id_murid, m.nama, 
                              t.id_tagihan, 
                              COALESCE(t.nominal, $nominalKas) as nominal,
                              COALESCE(t.jumlah_bayar, 0) as jumlah_bayar,
@@ -274,7 +318,6 @@ $totalTarget = $totalMurid * $nominalKas;
                             <tr class="text-gray-500 text-xs uppercase">
                                 <th class="px-3 py-2 text-left font-medium">#</th>
                                 <th class="px-3 py-2 text-left font-medium">Nama</th>
-                                <th class="px-3 py-2 text-left font-medium">Kelas</th>
                                 <th class="px-3 py-2 text-right font-medium">Sisa</th>
                                 <th class="px-3 py-2 text-center font-medium">Status</th>
                                 <th class="px-3 py-2 text-center font-medium">Aksi</th>
@@ -288,7 +331,6 @@ $totalTarget = $totalMurid * $nominalKas;
                             <tr class="hover:bg-gray-50" data-name="<?= htmlspecialchars($t['nama']) ?>">
                                 <td class="px-3 py-2 text-gray-400"><?= $no++ ?></td>
                                 <td class="px-3 py-2 text-gray-600"><?= htmlspecialchars($t['nama']) ?></td>
-                                <td class="px-3 py-2 text-gray-400"><?= htmlspecialchars($t['kelas']) ?></td>
                                 <td class="px-3 py-2 text-right text-gray-500"><?= formatRupiah($sisa) ?></td>
                                 <td class="px-3 py-2 text-center">
                                     <?php if ($t['status_bayar'] == 'Lunas'): ?>

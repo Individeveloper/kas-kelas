@@ -19,10 +19,9 @@ $error = '';
 $success = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nama = mysqli_real_escape_string($db, $_POST['nama']);
-    $kelas = mysqli_real_escape_string($db, $_POST['kelas']);
     
     // Status tidak diubah di sini, gunakan soft delete untuk nonaktifkan
-    $result = query("UPDATE murid SET nama = '$nama', kelas = '$kelas' WHERE id_murid = $id");
+    $result = query("UPDATE murid SET nama = '$nama' WHERE id_murid = $id");
     if ($result) {
         $success = true;
     } else {
@@ -65,12 +64,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <label class="block text-gray-700 font-medium mb-2">Nama Lengkap <span class="text-red-500">*</span></label>
                             <input type="text" name="nama" required 
                                    value="<?= htmlspecialchars($murid['nama']) ?>"
-                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
-                        </div>
-                        <div>
-                            <label class="block text-gray-700 font-medium mb-2">Kelas <span class="text-red-500">*</span></label>
-                            <input type="text" name="kelas" required 
-                                   value="<?= htmlspecialchars($murid['kelas']) ?>"
                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
                         </div>
                         <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">

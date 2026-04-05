@@ -5,6 +5,10 @@ requireLogin();
 $bulan = isset($_GET['bulan']) ? (int)$_GET['bulan'] : date('n');
 $tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
 
+if (isBendahara()) {
+    generateTagihanOtomatis($bulan, $tahun);
+}
+
 // Get all murid aktif with their tagihan status for selected month
 $muridList = query("SELECT m.*, 
                     COALESCE(t.status_bayar, 'Belum') as status_tagihan,
@@ -185,7 +189,6 @@ $transaksiKeluar = query("SELECT * FROM transaksi WHERE jenis = 'Keluar' AND MON
                         <tr>
                             <th class="px-4 py-3 text-left">No</th>
                             <th class="px-4 py-3 text-left">Nama Murid</th>
-                            <th class="px-4 py-3 text-left">Kelas</th>
                             <th class="px-4 py-3 text-right">Tagihan</th>
                             <th class="px-4 py-3 text-right">Dibayar</th>
                             <th class="px-4 py-3 text-center">Status</th>
@@ -212,7 +215,6 @@ $transaksiKeluar = query("SELECT * FROM transaksi WHERE jenis = 'Keluar' AND MON
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3"><?= $no++ ?></td>
                             <td class="px-4 py-3 font-medium"><?= htmlspecialchars($murid['nama']) ?></td>
-                            <td class="px-4 py-3"><?= htmlspecialchars($murid['kelas']) ?></td>
                             <td class="px-4 py-3 text-right"><?= formatRupiah($murid['nominal_tagihan']) ?></td>
                             <td class="px-4 py-3 text-right text-green-600"><?= formatRupiah($murid['jumlah_bayar']) ?></td>
                             <td class="px-4 py-3 text-center">

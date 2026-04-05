@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
                         </div>
                         <p class="text-sm text-gray-500 mt-1">
-                            Nominal ini akan digunakan saat generate tagihan baru
+                            Nominal ini akan dipakai saat tagihan otomatis dibuat untuk periode baru
                         </p>
                     </div>
                     
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <i class="fas fa-info-circle me-2"></i>Informasi
                         </h3>
                         <ul class="text-sm text-blue-700 space-y-1">
-                            <li>• Perubahan nominal hanya berlaku untuk tagihan baru</li>
+                            <li>• Perubahan nominal hanya berlaku untuk tagihan baru yang dibuat otomatis</li>
                             <li>• Tagihan yang sudah ada tidak akan berubah</li>
                             <li>• Minimal nominal adalah Rp 1.000</li>
                         </ul>

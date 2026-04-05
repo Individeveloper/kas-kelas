@@ -32,7 +32,6 @@ ON DUPLICATE KEY UPDATE username = username;
 CREATE TABLE IF NOT EXISTS murid (
     id_murid INT AUTO_INCREMENT PRIMARY KEY,
     nama VARCHAR(100) NOT NULL,
-    kelas VARCHAR(20) NOT NULL,
     `status` ENUM('Aktif', 'Tidak Aktif') DEFAULT 'Aktif',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

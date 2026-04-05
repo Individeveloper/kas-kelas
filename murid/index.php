@@ -56,7 +56,7 @@ if ($showInactive) {
                         <?= $showInactive ? 'Murid Tidak Aktif' : 'Data Murid' ?>
                     </h1>
                     <p class="text-gray-600">
-                        <?= $showInactive ? 'Daftar murid yang sudah tidak aktif' : 'Kelola data murid kelas' ?>
+                        <?= $showInactive ? 'Daftar murid yang sudah tidak aktif' : 'Kelola data murid' ?>
                     </p>
                 </div>
                 <div class="flex gap-2">
@@ -100,7 +100,6 @@ if ($showInactive) {
                         <tr>
                             <th class="px-4 py-3 text-left">No</th>
                             <th class="px-4 py-3 text-left">Nama</th>
-                            <th class="px-4 py-3 text-left">Kelas</th>
                             <th class="px-4 py-3 text-center">Status</th>
                             <th class="px-4 py-3 text-center">Aksi</th>
                         </tr>
@@ -112,7 +111,6 @@ if ($showInactive) {
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3"><?= $no++ ?></td>
                             <td class="px-4 py-3 font-medium"><?= htmlspecialchars($murid['nama']) ?></td>
-                            <td class="px-4 py-3"><?= htmlspecialchars($murid['kelas']) ?></td>
                             <td class="px-4 py-3 text-center">
                                 <span class="px-2 py-1 rounded text-xs <?= $statusClass ?>">
                                     <?= htmlspecialchars($murid['status']) ?>
@@ -146,7 +144,7 @@ if ($showInactive) {
                         <?php endwhile; ?>
                         <?php if (mysqli_num_rows($muridList) == 0): ?>
                         <tr>
-                            <td colspan="5" class="px-4 py-8 text-center text-gray-500">
+                            <td colspan="4" class="px-4 py-8 text-center text-gray-500">
                                 <i class="fas fa-users text-4xl mb-2"></i>
                                 <p>Belum ada data murid</p>
                             </td>
