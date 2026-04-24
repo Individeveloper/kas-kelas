@@ -15,16 +15,11 @@ $redirectTahun = date('Y');
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tanggal = mysqli_real_escape_string($db, $_POST['tanggal']);
     $jenis = mysqli_real_escape_string($db, $_POST['jenis']);
-    $kategori = isset($_POST['kategori']) ? mysqli_real_escape_string($db, $_POST['kategori']) : null;
+    $kategori = isset($_POST['kategori']) ? mysqli_real_escape_string($db, $_POST['kategori']) : 'Lainnya';
     $jumlah = (int)$_POST['jumlah'];
     $keterangan = mysqli_real_escape_string($db, $_POST['keterangan']);
-    
-    // Insert dengan atau tanpa kategori
-    if ($kategori) {
-        $result = query("INSERT INTO transaksi (id_murid, tanggal, jenis, kategori, jumlah, keterangan) VALUES (1, '$tanggal', '$jenis', '$kategori', $jumlah, '$keterangan')");
-    } else {
-        $result = query("INSERT INTO transaksi (id_murid, tanggal, jenis, jumlah, keterangan) VALUES (1, '$tanggal', '$jenis', $jumlah, '$keterangan')");
-    }
+
+    $result = query("INSERT INTO transaksi (id_murid, tanggal, jenis, kategori, jumlah, keterangan) VALUES (1, '$tanggal', '$jenis', '$kategori', $jumlah, '$keterangan')");
     
     if ($result) {
         $redirectBulan = date('n', strtotime($tanggal));
@@ -78,21 +73,20 @@ $defaultMuridId = $muridDefault ? $muridDefault['id_murid'] : 1;
                             <label class="block text-gray-700 font-medium mb-2">Jenis Transaksi</label>
                             <div class="flex gap-4">
                                 <label class="flex items-center">
-                                    <input type="radio" name="jenis" value="Masuk" <?= $jenis == 'Masuk' ? 'checked' : '' ?> class="me-2" onchange="toggleKategori()">
+                                    <input type="radio" name="jenis" value="Masuk" <?= $jenis == 'Masuk' ? 'checked' : '' ?> class="me-2">
                                     <span class="text-green-600 font-medium">Kas Masuk</span>
                                 </label>
                                 <label class="flex items-center">
-                                    <input type="radio" name="jenis" value="Keluar" <?= $jenis == 'Keluar' ? 'checked' : '' ?> class="me-2" onchange="toggleKategori()">
+                                    <input type="radio" name="jenis" value="Keluar" <?= $jenis == 'Keluar' ? 'checked' : '' ?> class="me-2">
                                     <span class="text-red-600 font-medium">Kas Keluar</span>
                                 </label>
                             </div>
                         </div>
-                        
-                        <div id="kategoriField" style="display: <?= $jenis == 'Masuk' ? 'block' : 'none' ?>">
+
+                        <div>
                             <label class="block text-gray-700 font-medium mb-2">Kategori</label>
-                            <select name="kategori" id="kategoriSelect"
+                            <select name="kategori" required
                                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
-                                <option value="Kas">Kas</option>
                                 <option value="Keperluan Kelas">Keperluan Kelas</option>
                                 <option value="Sumbangan">Sumbangan</option>
                                 <option value="Lainnya">Lainnya</option>
@@ -131,33 +125,6 @@ $defaultMuridId = $muridDefault ? $muridDefault['id_murid'] : 1;
             <?php include '../layout/component/footer.php'; ?>
         </div>
     </div>
-    <script>
-        function toggleKategori() {
-            const jenisRadios = document.getElementsByName('jenis');
-            const kategoriField = document.getElementById('kategoriField');
-            const kategoriSelect = document.getElementById('kategoriSelect');
-            
-            let selectedJenis = '';
-            jenisRadios.forEach(radio => {
-                if (radio.checked) {
-                    selectedJenis = radio.value;
-                }
-            });
-            
-            if (selectedJenis === 'Masuk') {
-                kategoriField.style.display = 'block';
-                kategoriSelect.required = true;
-            } else {
-                kategoriField.style.display = 'none';
-                kategoriSelect.required = false;
-                kategoriSelect.value = 'Kas'; // reset ke default
-            }
-        }
-        
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', toggleKategori);
-    </script>
-    
     <?php if ($success): ?>
     <script>
         alert('Transaksi berhasil disimpan!');

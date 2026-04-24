@@ -3,7 +3,7 @@ include '../config/app.php';
 requireBendahara();
 
 // Redirect jika ada parameter tidak valid di URL
-if (isset($_GET['generate']) || isset($_GET['bayar']) || isset($_GET['bayar_lunas']) || isset($_GET['batal_bayar'])) {
+if (isset($_GET['generate']) || isset($_GET['bayar']) || isset($_GET['batal_bayar'])) {
     header('Location: /cashflowKas/tagihan/index.php?bulan=' . (isset($_GET['bulan']) ? (int)$_GET['bulan'] : date('n')) . '&tahun=' . (isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y')));
     exit;
 }
@@ -92,112 +92,134 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // Proses pembayaran jika tidak ada error
         if (!$error && isset($tagihan)) {
-            if ($jumlah_dibayar <= 0) {
-                $error = "Jumlah pembayaran harus lebih dari 0";
-            } elseif ($jumlah_dibayar > $sisa) {
-                $error = "Jumlah pembayaran melebihi sisa tagihan (" . formatRupiah($sisa) . ")";
-            } else {
-                $jumlah_bayar_baru = $jumlah_bayar_lama + $jumlah_dibayar;
-                
-                if ($jumlah_bayar_baru >= $nominal) {
-                    $status_baru = 'Lunas';
-                } elseif ($jumlah_bayar_baru > 0) {
-                    $status_baru = 'Sebagian';
-                } else {
-                    $status_baru = 'Belum';
-                }
-                
-                $result = query("UPDATE tagihan SET jumlah_bayar = $jumlah_bayar_baru, status_bayar = '$status_baru', tanggal_bayar = '$tanggal_bayar' WHERE id_tagihan = $id_tagihan");
-                
+            if ($jumlah_dibayar < 0) {
+                $error = "Jumlah pembayaran tidak boleh negatif";
+            } elseif ($jumlah_dibayar === 0) {
+                $status_baru = $jumlah_bayar_lama >= $nominal
+                    ? 'Lunas'
+                    : ($jumlah_bayar_lama > 0 ? 'Sebagian' : 'Belum');
+
+                $result = query("UPDATE tagihan SET status_bayar = '$status_baru' WHERE id_tagihan = $id_tagihan");
                 if ($result) {
+                    $success = "Pembayaran $nama tetap " . strtolower($status_baru) . " (nominal input: Rp 0).";
+                } else {
+                    $error = "Gagal memperbarui status: " . mysqli_error($GLOBALS['db']);
+                }
+            } else {
+                $total_input = $jumlah_dibayar;
+                $kelebihan = $jumlah_dibayar;
+                $detailAlokasi = [];
+
+                mysqli_begin_transaction($GLOBALS['db']);
+
+                try {
+                    // 1) Alokasi ke tagihan bulan aktif terlebih dahulu
+                    $sisa_bulan_ini = max(0, $nominal - $jumlah_bayar_lama);
+                    $dibayar_bulan_ini = min($kelebihan, $sisa_bulan_ini);
+                    $jumlah_bayar_baru = $jumlah_bayar_lama + $dibayar_bulan_ini;
+
+                    $status_baru = $jumlah_bayar_baru >= $nominal
+                        ? 'Lunas'
+                        : ($jumlah_bayar_baru > 0 ? 'Sebagian' : 'Belum');
+
+                    $result = query("UPDATE tagihan SET jumlah_bayar = $jumlah_bayar_baru, status_bayar = '$status_baru', tanggal_bayar = '$tanggal_bayar' WHERE id_tagihan = $id_tagihan");
+                    if (!$result) {
+                        throw new \Exception("Gagal update tagihan bulan aktif: " . mysqli_error($GLOBALS['db']));
+                    }
+
+                    if ($dibayar_bulan_ini > 0) {
+                        $detailAlokasi[] = [
+                            'bulan' => $bulan,
+                            'tahun' => $tahun,
+                            'jumlah' => $dibayar_bulan_ini,
+                        ];
+                    }
+
+                    $kelebihan -= $dibayar_bulan_ini;
+
+                    // 2) Jika ada kelebihan, lanjut alokasi ke bulan berikutnya
+                    $bulanAlokasi = $bulan;
+                    $tahunAlokasi = $tahun;
+                    $iterasiMaks = 60; // pengaman loop
+
+                    while ($kelebihan > 0 && $iterasiMaks-- > 0) {
+                        $bulanAlokasi++;
+                        if ($bulanAlokasi > 12) {
+                            $bulanAlokasi = 1;
+                            $tahunAlokasi++;
+                        }
+
+                        $tagihanLanjutan = mysqli_fetch_assoc(query("SELECT * FROM tagihan WHERE id_murid = $id_murid AND bulan = $bulanAlokasi AND tahun = $tahunAlokasi LIMIT 1"));
+
+                        if (!$tagihanLanjutan) {
+                            $buatTagihanLanjutan = query("INSERT INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar) VALUES ($id_murid, $bulanAlokasi, $tahunAlokasi, $nominalKas, 0, 'Belum')");
+                            if (!$buatTagihanLanjutan) {
+                                throw new \Exception("Gagal membuat tagihan lanjutan: " . mysqli_error($GLOBALS['db']));
+                            }
+
+                            $idTagihanLanjutan = mysqli_insert_id($GLOBALS['db']);
+                            $tagihanLanjutan = mysqli_fetch_assoc(query("SELECT * FROM tagihan WHERE id_tagihan = $idTagihanLanjutan LIMIT 1"));
+                        }
+
+                        if (!$tagihanLanjutan) {
+                            throw new \Exception("Tagihan lanjutan tidak ditemukan");
+                        }
+
+                        $sisaLanjutan = max(0, (int)$tagihanLanjutan['nominal'] - (int)$tagihanLanjutan['jumlah_bayar']);
+                        if ($sisaLanjutan <= 0) {
+                            continue;
+                        }
+
+                        $dibayarLanjutan = min($kelebihan, $sisaLanjutan);
+                        $jumlahBayarLanjutanBaru = (int)$tagihanLanjutan['jumlah_bayar'] + $dibayarLanjutan;
+
+                        $statusLanjutanBaru = $jumlahBayarLanjutanBaru >= (int)$tagihanLanjutan['nominal']
+                            ? 'Lunas'
+                            : ($jumlahBayarLanjutanBaru > 0 ? 'Sebagian' : 'Belum');
+
+                        $updateLanjutan = query("UPDATE tagihan SET jumlah_bayar = $jumlahBayarLanjutanBaru, status_bayar = '$statusLanjutanBaru', tanggal_bayar = '$tanggal_bayar' WHERE id_tagihan = {$tagihanLanjutan['id_tagihan']}");
+                        if (!$updateLanjutan) {
+                            throw new \Exception("Gagal update tagihan lanjutan: " . mysqli_error($GLOBALS['db']));
+                        }
+
+                        $detailAlokasi[] = [
+                            'bulan' => $bulanAlokasi,
+                            'tahun' => $tahunAlokasi,
+                            'jumlah' => $dibayarLanjutan,
+                        ];
+
+                        $kelebihan -= $dibayarLanjutan;
+                    }
+
+                    if ($kelebihan > 0) {
+                        throw new \Exception("Kelebihan pembayaran terlalu besar untuk dialokasikan otomatis");
+                    }
+
                     $keterangan = "Pembayaran kas " . getBulanNama($bulan) . " " . $tahun . " - " . $nama;
-                    if ($status_baru == 'Sebagian') {
+                    if (count($detailAlokasi) > 1) {
+                        $alokasiTerakhir = end($detailAlokasi);
+                        $keterangan .= " (dialokasikan sampai " . getBulanNama($alokasiTerakhir['bulan']) . " " . $alokasiTerakhir['tahun'] . ")";
+                    } elseif ($status_baru == 'Sebagian') {
                         $keterangan .= " (sebagian)";
                     }
-                    $insertResult = query("INSERT INTO transaksi (id_murid, tanggal, jenis, jumlah, keterangan) VALUES ($id_murid, '$tanggal_bayar', 'Masuk', $jumlah_dibayar, '$keterangan')");
-                    
-                    if ($insertResult) {
-                        $success = "Pembayaran " . formatRupiah($jumlah_dibayar) . " dari $nama berhasil dicatat!";
-                    } else {
-                        $error = "Tagihan terupdate tapi gagal mencatat transaksi: " . mysqli_error($GLOBALS['db']);
+
+                    $insertResult = query("INSERT INTO transaksi (id_murid, tanggal, jenis, jumlah, keterangan) VALUES ($id_murid, '$tanggal_bayar', 'Masuk', $total_input, '$keterangan')");
+                    if (!$insertResult) {
+                        throw new \Exception("Tagihan terupdate tapi gagal mencatat transaksi: " . mysqli_error($GLOBALS['db']));
                     }
-                } else {
-                    $error = "Gagal mencatat pembayaran: " . mysqli_error($GLOBALS['db']);
-                }
-            }
-        }
-    }
-    
-    // Handle bayar lunas
-    if (isset($_POST['bayar_lunas'])) {
-        $tanggal_bayar = date('Y-m-d');
-        
-        if (isset($_POST['id_tagihan']) && $_POST['id_tagihan'] > 0) {
-            // Tagihan sudah ada
-            $id_tagihan = (int)$_POST['id_tagihan'];
-            $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_tagihan = $id_tagihan"));
-            
-            if ($tagihan && $tagihan['status_bayar'] != 'Lunas') {
-                $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
-                $id_murid = $tagihan['id_murid'];
-                $nama = $tagihan['nama'];
-            }
-        } elseif (isset($_POST['id_murid'])) {
-            // Cek dulu tagihan periode ini, baru insert jika memang belum ada.
-            $id_murid = (int)$_POST['id_murid'];
-            $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_murid = $id_murid AND t.bulan = $bulan AND t.tahun = $tahun LIMIT 1"));
 
-            if ($tagihan) {
-                if ($tagihan['status_bayar'] != 'Lunas') {
-                    $id_tagihan = $tagihan['id_tagihan'];
-                    $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
-                    $nama = $tagihan['nama'];
-                }
-            } else {
-                $murid = mysqli_fetch_assoc(query("SELECT * FROM murid WHERE id_murid = $id_murid"));
+                    mysqli_commit($GLOBALS['db']);
 
-                if ($murid) {
-                    $nama = $murid['nama'];
-                    $sisa = $nominalKas;
-
-                    $result = query("INSERT INTO tagihan (id_murid, bulan, tahun, nominal, jumlah_bayar, status_bayar) VALUES ($id_murid, $bulan, $tahun, $nominalKas, 0, 'Belum')");
-                    if ($result) {
-                        $id_tagihan = mysqli_insert_id($GLOBALS['db']);
-                        $tagihan = ['nominal' => $nominalKas];
+                    if (count($detailAlokasi) > 1) {
+                        $success = "Pembayaran " . formatRupiah($total_input) . " dari $nama berhasil dicatat dan dialokasikan hingga bulan berikutnya.";
                     } else {
-                        // Antisipasi race condition jika record terbuat di request lain.
-                        $tagihan = mysqli_fetch_assoc(query("SELECT t.*, m.nama FROM tagihan t JOIN murid m ON t.id_murid = m.id_murid WHERE t.id_murid = $id_murid AND t.bulan = $bulan AND t.tahun = $tahun LIMIT 1"));
-                        if ($tagihan && $tagihan['status_bayar'] != 'Lunas') {
-                            $id_tagihan = $tagihan['id_tagihan'];
-                            $sisa = $tagihan['nominal'] - $tagihan['jumlah_bayar'];
-                            $nama = $tagihan['nama'];
-                        } else {
-                            $error = "Gagal membuat tagihan: " . mysqli_error($GLOBALS['db']);
-                        }
+                        $success = "Pembayaran " . formatRupiah($total_input) . " dari $nama berhasil dicatat!";
                     }
-                } else {
-                    $error = "Murid tidak ditemukan";
+                } catch (\Exception $e) {
+                    mysqli_rollback($GLOBALS['db']);
+                    $error = $e->getMessage();
                 }
             }
-        }
-        
-        if (isset($tagihan) && isset($sisa) && $sisa > 0) {
-            $result = query("UPDATE tagihan SET jumlah_bayar = {$tagihan['nominal']}, status_bayar = 'Lunas', tanggal_bayar = '$tanggal_bayar' WHERE id_tagihan = $id_tagihan");
-            
-            if ($result) {
-                $keterangan = "Pembayaran kas " . getBulanNama($bulan) . " " . $tahun . " - " . $nama . " (lunas)";
-                $insertResult = query("INSERT INTO transaksi (id_murid, tanggal, jenis, jumlah, keterangan) VALUES ($id_murid, '$tanggal_bayar', 'Masuk', $sisa, '$keterangan')");
-                
-                if ($insertResult) {
-                    $success = "Pembayaran lunas dari $nama berhasil dicatat!";
-                } else {
-                    $error = "Tagihan terupdate tapi gagal mencatat transaksi: " . mysqli_error($GLOBALS['db']);
-                }
-            } else {
-                $error = "Gagal mencatat pembayaran: " . mysqli_error($GLOBALS['db']);
-            }
-        } else {
-            $error = "Tagihan tidak ditemukan atau sudah lunas";
         }
     }
     
@@ -348,17 +370,6 @@ $totalTarget = $totalMurid * $nominalKas;
                                                 class="text-gray-400 hover:text-gray-600 px-1" title="Bayar">
                                             <i class="fas fa-coins"></i>
                                         </button>
-                                        <form method="POST" class="inline" onsubmit="return confirm('Bayar lunas <?= htmlspecialchars(addslashes($t['nama'])) ?>?')">
-                                            <?php if ($hasTagihan): ?>
-                                            <input type="hidden" name="id_tagihan" value="<?= $t['id_tagihan'] ?>">
-                                            <?php else: ?>
-                                            <input type="hidden" name="id_murid" value="<?= $t['id_murid'] ?>">
-                                            <?php endif; ?>
-                                            <input type="hidden" name="bayar_lunas" value="1">
-                                            <button type="submit" class="text-gray-400 hover:text-gray-600 px-1" title="Lunas">
-                                                <i class="fas fa-check-double"></i>
-                                            </button>
-                                        </form>
                                     </div>
                                     <?php endif; ?>
                                     <?php if ($hasTagihan && $t['jumlah_bayar'] > 0): ?>
@@ -406,8 +417,11 @@ $totalTarget = $totalMurid * $nominalKas;
                 </div>
                 <div class="mb-4">
                     <label class="text-sm text-gray-400">Jumlah Bayar</label>
-                    <input type="number" name="jumlah_dibayar" id="modal_jumlah" required min="1000" step="1000"
+                    <input type="number" name="jumlah_dibayar" id="modal_jumlah" required min="0" step="1000"
                            class="w-full mt-1 px-3 py-2 border border-gray-200 rounded focus:outline-none focus:border-gray-300 text-gray-600">
+                    <p class="text-xs text-gray-400 mt-1">
+                        Boleh isi 0 (belum bayar), sebagian, pas nominal (lunas), atau lebih (otomatis lanjut bulan berikutnya).
+                    </p>
                 </div>
                 <div class="flex gap-2">
                     <button type="submit" class="flex-1 bg-gray-700 text-white py-2 rounded hover:bg-gray-600 text-sm">
@@ -427,7 +441,6 @@ $totalTarget = $totalMurid * $nominalKas;
             document.getElementById('modal_id_murid').value = idMurid;
             document.getElementById('modal_nama').textContent = nama;
             document.getElementById('modal_sisa').textContent = 'Rp ' + sisa.toLocaleString('id-ID');
-            document.getElementById('modal_jumlah').max = sisa;
             document.getElementById('modal_jumlah').value = '';
             document.getElementById('bayarModal').classList.remove('hidden');
             document.getElementById('bayarModal').classList.add('flex');

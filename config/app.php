@@ -79,7 +79,7 @@ function requireBendahara() {
 
 function logout() {
     session_destroy();
-    header('Location: ../login.php');
+    header('Location: ../cashflowKas/login.php');
     exit;
 }
 
